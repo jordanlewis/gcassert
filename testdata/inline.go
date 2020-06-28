@@ -16,9 +16,9 @@ func notInlinable(a int) int {
 func caller() {
 	sum := 0
 	for i := 0; i < 10; i++ {
-		// gcassert:inline
+		//gcassert:inline
 		sum += inlinable(i)
-		// gcassert:inline
+		//gcassert:inline
 		sum += notInlinable(i)
 	}
 }

@@ -57,7 +57,7 @@ type lineInfo struct {
 	passedDirective map[int]bool
 }
 
-var gcAssertRegex = regexp.MustCompile(`// gcassert:(\w+)`)
+var gcAssertRegex = regexp.MustCompile(`//gcassert:(\w+)`)
 
 type assertVisitor struct {
 	commentMap ast.CommentMap
@@ -105,7 +105,7 @@ COMMENTLOOP:
 }
 
 // GCAssert searches through the packages at the input path and writes failures
-// to comply with // gcassert directives to the given io.Writer.
+// to comply with //gcassert directives to the given io.Writer.
 func GCAssert(path string, w io.Writer) error {
 	fileSet := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
