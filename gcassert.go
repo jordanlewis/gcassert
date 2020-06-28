@@ -15,15 +15,17 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/printer"
 	"go/token"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"golang.org/x/tools/go/packages"
 )
 
 type assertDirective int
@@ -106,11 +108,14 @@ COMMENTLOOP:
 // to comply with // gcassert directives to the given io.Writer.
 func GCAssert(path string, w io.Writer) error {
 	fileSet := token.NewFileSet()
-	packageMap, err := parser.ParseDir(fileSet, path, nil /* filter */, parser.ParseComments)
+	pkgs, err := packages.Load(&packages.Config{
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles,
+		Fset: fileSet,
+	}, path)
+	directiveMap, err := parseDirectives(pkgs, fileSet)
 	if err != nil {
 		return err
 	}
-	directiveMap := parseDirectives(packageMap, fileSet)
 
 	// Next: invoke Go compiler with -m flags to get the compiler to print
 	// its optimization decisions.
@@ -140,14 +145,14 @@ func GCAssert(path string, w io.Writer) error {
 		line := scanner.Text()
 		matches := optInfo.FindStringSubmatch(line)
 		if len(matches) != 0 {
-			filepath := matches[1]
+			path := matches[1]
 			lineNo, err := strconv.Atoi(matches[2])
 			if err != nil {
 				return err
 			}
 			message := matches[3]
 
-			if lineToDirectives := directiveMap[filepath]; lineToDirectives != nil {
+			if lineToDirectives := directiveMap[path]; lineToDirectives != nil {
 				info := lineToDirectives[lineNo]
 				if info.passedDirective == nil {
 					info.passedDirective = make(map[int]bool)
@@ -162,7 +167,9 @@ func GCAssert(path string, w io.Writer) error {
 							// Print out the user's code lineNo that failed the assertion,
 							// the assertion itself, and the compiler output that
 							// proved that the assertion failed.
-							printAssertionFailure(fileSet, info, w, message)
+							if err := printAssertionFailure(cwd, fileSet, info, w, message); err != nil {
+								return err
+							}
 						}
 					case inline:
 						if strings.HasPrefix(message, "inlining call to") {
@@ -182,7 +189,10 @@ func GCAssert(path string, w io.Writer) error {
 				// output and fail if not.
 				if d == inline {
 					if !info.passedDirective[i] {
-						printAssertionFailure(fileSet, info, w, "call was not inlined")
+						if err := printAssertionFailure(
+							cwd, fileSet, info, w, "call was not inlined"); err != nil {
+							return err
+						}
 					}
 				}
 			}
@@ -191,27 +201,43 @@ func GCAssert(path string, w io.Writer) error {
 	return nil
 }
 
-func printAssertionFailure(fileSet *token.FileSet, info lineInfo, w io.Writer, message string) {
+func printAssertionFailure(cwd string, fileSet *token.FileSet, info lineInfo, w io.Writer, message string) error {
 	var buf strings.Builder
 	_ = printer.Fprint(&buf, fileSet, info.n)
 	pos := fileSet.Position(info.n.Pos())
-	fmt.Fprintf(w, "%s:%d:\t%s: %s\n", pos.Filename, pos.Line, buf.String(), message)
+	relPath, err := filepath.Rel(cwd, pos.Filename)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "%s:%d:\t%s: %s\n", relPath, pos.Line, buf.String(), message)
+	return nil
 }
 
 type directiveMap map[string]map[int]lineInfo
 
-func parseDirectives(packageMap map[string]*ast.Package, fileSet *token.FileSet) directiveMap {
+func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiveMap, error) {
 	fileDirectiveMap := make(directiveMap)
-	for _, pkg := range packageMap {
-		for absPath, file := range pkg.Files {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	for _, pkg := range pkgs {
+		for i, file := range pkg.Syntax {
 			commentMap := ast.NewCommentMap(fileSet, file, file.Comments)
 
 			v := newAssertVisitor(commentMap, fileSet)
 			// First: find all lines of code annotated with our gcassert directives.
 			ast.Walk(v, file)
 
-			fileDirectiveMap[absPath] = v.directiveMap
+			if len(v.directiveMap) > 0 {
+				absPath := pkg.CompiledGoFiles[i]
+				relPath, err := filepath.Rel(cwd, absPath)
+				if err != nil {
+					return nil, err
+				}
+				fileDirectiveMap[relPath] = v.directiveMap
+			}
 		}
 	}
-	return fileDirectiveMap
+	return fileDirectiveMap, nil
 }

@@ -11,21 +11,27 @@
 package gcassert
 
 import (
-	"go/parser"
 	"go/token"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/tools/go/packages"
 )
 
 func TestParseDirectives(t *testing.T) {
 	fileSet := token.NewFileSet()
-	packageMap, err := parser.ParseDir(fileSet, "testdata", nil /* filter */, parser.ParseComments)
+	pkgs, err := packages.Load(&packages.Config{
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles,
+		Fset: fileSet,
+	}, "./testdata")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
-	actualMap := parseDirectives(packageMap, fileSet)
+	actualMap, err := parseDirectives(pkgs, fileSet)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for _, m := range actualMap {
 		for k, info := range m {
@@ -50,11 +56,14 @@ func TestParseDirectives(t *testing.T) {
 
 func TestGCAssert(t *testing.T) {
 	var w strings.Builder
-	GCAssert("testdata", &w)
+	err := GCAssert("./testdata", &w)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	expectedOutput := `testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
-testdata/inline.go:22:	sum += notInlinable(i): call was not inlined
 testdata/bce.go:16:	sum += notInlinable(ints[i]): call was not inlined
+testdata/inline.go:22:	sum += notInlinable(i): call was not inlined
 `
 	assert.Equal(t, expectedOutput, w.String())
 }
