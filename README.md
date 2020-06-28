@@ -1,10 +1,32 @@
 # gcassert
 
 gcassert is a program for making assertions about compiler decisions in
-Golang programs.
+Golang programs, via inline comment directives like `// gcassert:inline`.
 
-It currently supports asserting that a function was inlined and that a slice
-lookup had bounds checks eliminated.
+## Example
+
+Given a file `foo.go`:
+
+```
+package foo
+
+func addOne(i int) int {
+    return i+1
+}
+
+func a(ints []int) int {
+    var sum int
+    for i := range ints {
+        // gcassert:bce
+        // gcassert:inline
+        sum += addOne(ints[i])
+    }
+    return sum
+}
+```
+
+The inline `// gcassert` directives will cause `gcassert` to fail if the line
+`sum += addOne(ints[i])` is either not inlined or contains bounds checks.
 
 ## Installation
 
