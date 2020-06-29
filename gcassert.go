@@ -57,7 +57,7 @@ type lineInfo struct {
 	passedDirective map[int]bool
 }
 
-var gcAssertRegex = regexp.MustCompile(`//gcassert:(\w+)`)
+var gcAssertRegex = regexp.MustCompile(`//gcassert:([\w,]+)`)
 
 type assertVisitor struct {
 	commentMap ast.CommentMap
@@ -87,17 +87,20 @@ COMMENTLOOP:
 				continue COMMENTLOOP
 			}
 			// The 0th match is the whole string, and the 1st match is the
-			// gcassert directive.
+			// gcassert directive(s).
+			directiveStrings := strings.Split(matches[1], ",")
 
-			directive, err := stringToDirective(matches[1])
-			if err != nil {
-				continue COMMENTLOOP
-			}
 			pos := node.Pos()
 			lineNumber := v.fileSet.Position(pos).Line
 			lineInfo := v.directiveMap[lineNumber]
-			lineInfo.directives = append(lineInfo.directives, directive)
 			lineInfo.n = node
+			for _, s := range directiveStrings {
+				directive, err := stringToDirective(s)
+				if err != nil {
+					continue
+				}
+				lineInfo.directives = append(lineInfo.directives, directive)
+			}
 			v.directiveMap[lineNumber] = lineInfo
 		}
 	}

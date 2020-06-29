@@ -43,8 +43,10 @@ func TestParseDirectives(t *testing.T) {
 	expectedMap := directiveMap{
 		"testdata/bce.go": {
 			8:  {directives: []assertDirective{bce}},
-			12: {directives: []assertDirective{bce, inline}},
-			16: {directives: []assertDirective{bce, inline}},
+			11: {directives: []assertDirective{bce, inline}},
+			13: {directives: []assertDirective{bce, inline}},
+			17: {directives: []assertDirective{bce, inline}},
+			19: {directives: []assertDirective{bce, inline}},
 		},
 		"testdata/inline.go": {
 			20: {directives: []assertDirective{inline}},
@@ -62,7 +64,8 @@ func TestGCAssert(t *testing.T) {
 	}
 
 	expectedOutput := `testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
-testdata/bce.go:16:	sum += notInlinable(ints[i]): call was not inlined
+testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined
+testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined
 testdata/inline.go:22:	sum += notInlinable(i): call was not inlined
 `
 	assert.Equal(t, expectedOutput, w.String())

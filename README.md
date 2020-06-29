@@ -17,16 +17,21 @@ func addOne(i int) int {
 func a(ints []int) int {
     var sum int
     for i := range ints {
-        //gcassert:bce
-        //gcassert:inline
+        //gcassert:bce,inline
         sum += addOne(ints[i])
+
+        sum += ints[i] //gcassert:bce
     }
     return sum
 }
 ```
 
-The inline `//gcassert` directives will cause `gcassert` to fail if the line
+The inline `//gcassert` directive will cause `gcassert` to fail if the line
 `sum += addOne(ints[i])` is either not inlined or contains bounds checks.
+
+`//gcassert` comments expect a comma-separated list of directives after
+`//gcassert:`. They can be included above the line in question or after, as an
+inline comment.
 
 ## Installation
 
