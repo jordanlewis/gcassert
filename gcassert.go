@@ -123,7 +123,7 @@ func GCAssert(path string, w io.Writer) error {
 	// Next: invoke Go compiler with -m flags to get the compiler to print
 	// its optimization decisions.
 
-	args := append([]string{"build", "-gcflags=all=-m -m -d=ssa/check_bce/debug=1"}, "./"+path)
+	args := append([]string{"build", "-gcflags=-m -m -d=ssa/check_bce/debug=1"}, "./"+path)
 	cmd := exec.Command("go", args...)
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -155,7 +155,11 @@ func GCAssert(path string, w io.Writer) error {
 			}
 			message := matches[3]
 
-			if lineToDirectives := directiveMap[path]; lineToDirectives != nil {
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				return err
+			}
+			if lineToDirectives := directiveMap[absPath]; lineToDirectives != nil {
 				info := lineToDirectives[lineNo]
 				if info.passedDirective == nil {
 					info.passedDirective = make(map[int]bool)
@@ -220,10 +224,6 @@ type directiveMap map[string]map[int]lineInfo
 
 func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiveMap, error) {
 	fileDirectiveMap := make(directiveMap)
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
 	for _, pkg := range pkgs {
 		for i, file := range pkg.Syntax {
 			commentMap := ast.NewCommentMap(fileSet, file, file.Comments)
@@ -232,13 +232,13 @@ func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiv
 			// First: find all lines of code annotated with our gcassert directives.
 			ast.Walk(v, file)
 
+			file := pkg.CompiledGoFiles[i]
+			idx := strings.LastIndex(file, pkg.PkgPath)
+			if idx == -1 {
+				return nil, fmt.Errorf("couldn't find file %s in package %s", file, pkg.PkgPath)
+			}
 			if len(v.directiveMap) > 0 {
-				absPath := pkg.CompiledGoFiles[i]
-				relPath, err := filepath.Rel(cwd, absPath)
-				if err != nil {
-					return nil, err
-				}
-				fileDirectiveMap[relPath] = v.directiveMap
+				fileDirectiveMap[file] = v.directiveMap
 			}
 		}
 	}

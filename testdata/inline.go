@@ -21,4 +21,7 @@ func caller() {
 		//gcassert:inline
 		sum += notInlinable(i)
 	}
+
+	// This assertion should fail as there's nothing to inline.
+	sum += 1 //gcassert:inline
 }

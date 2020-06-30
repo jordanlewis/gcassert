@@ -12,6 +12,8 @@ package gcassert
 
 import (
 	"go/token"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,16 +30,28 @@ func TestParseDirectives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actualMap, err := parseDirectives(pkgs, fileSet)
+	absMap, err := parseDirectives(pkgs, fileSet)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, m := range actualMap {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Convert the map into relative paths for ease of testing, and remove
+	// the syntax node so we don't have to test that as well.
+	relMap := make(directiveMap, len(absMap))
+	for absPath, m := range absMap {
 		for k, info := range m {
 			info.n = nil
 			m[k] = info
 		}
+		relPath, err := filepath.Rel(cwd, absPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		relMap[relPath] = m
 	}
 
 	expectedMap := directiveMap{
@@ -51,9 +65,10 @@ func TestParseDirectives(t *testing.T) {
 		"testdata/inline.go": {
 			20: {directives: []assertDirective{inline}},
 			22: {directives: []assertDirective{inline}},
+			26: {directives: []assertDirective{inline}},
 		},
 	}
-	assert.Equal(t, expectedMap, actualMap)
+	assert.Equal(t, expectedMap, relMap)
 }
 
 func TestGCAssert(t *testing.T) {
@@ -67,6 +82,7 @@ func TestGCAssert(t *testing.T) {
 testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined
 testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined
 testdata/inline.go:22:	sum += notInlinable(i): call was not inlined
+testdata/inline.go:26:	sum += 1: call was not inlined
 `
 	assert.Equal(t, expectedOutput, w.String())
 }
