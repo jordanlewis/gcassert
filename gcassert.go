@@ -233,10 +233,6 @@ func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiv
 			ast.Walk(v, file)
 
 			file := pkg.CompiledGoFiles[i]
-			idx := strings.LastIndex(file, pkg.PkgPath)
-			if idx == -1 {
-				return nil, fmt.Errorf("couldn't find file %s in package %s", file, pkg.PkgPath)
-			}
 			if len(v.directiveMap) > 0 {
 				fileDirectiveMap[file] = v.directiveMap
 			}
