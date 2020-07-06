@@ -77,12 +77,17 @@ type assertVisitor struct {
 	p *packages.Package
 }
 
-func newAssertVisitor(commentMap ast.CommentMap, fileSet *token.FileSet, p *packages.Package) assertVisitor {
+func newAssertVisitor(
+	commentMap ast.CommentMap,
+	fileSet *token.FileSet,
+	p *packages.Package,
+	mustInlineFuncs map[types.Object]struct{},
+) assertVisitor {
 	return assertVisitor{
 		commentMap:      commentMap,
 		fileSet:         fileSet,
 		directiveMap:    make(map[int]lineInfo),
-		mustInlineFuncs: make(map[types.Object]struct{}),
+		mustInlineFuncs: mustInlineFuncs,
 		p:               p,
 	}
 }
@@ -93,29 +98,6 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 	}
 	pos := node.Pos()
 	lineNumber := v.fileSet.Position(pos).Line
-
-	// Search for all func callsites of functions that were marked with
-	// gcassert:inline and add inline directives to those callsites.
-	switch n := node.(type) {
-	case *ast.CallExpr:
-		var obj types.Object
-		switch n := n.Fun.(type) {
-		case *ast.Ident:
-			obj = v.p.TypesInfo.Uses[n]
-		case *ast.SelectorExpr:
-			sel := v.p.TypesInfo.Selections[n]
-			if sel == nil {
-				break
-			}
-			obj = sel.Obj()
-		}
-		if _, ok := v.mustInlineFuncs[obj]; ok {
-			lineInfo := v.directiveMap[lineNumber]
-			lineInfo.n = node
-			lineInfo.directives = append(lineInfo.directives, inline)
-			v.directiveMap[lineNumber] = lineInfo
-		}
-	}
 
 	m := v.commentMap[node]
 	for _, g := range m {
@@ -158,13 +140,13 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 
 // GCAssert searches through the packages at the input path and writes failures
 // to comply with //gcassert directives to the given io.Writer.
-func GCAssert(path string, w io.Writer) error {
+func GCAssert(w io.Writer, paths ...string) error {
 	fileSet := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles |
 			packages.NeedTypesInfo | packages.NeedTypes,
 		Fset: fileSet,
-	}, path)
+	}, paths...)
 	directiveMap, err := parseDirectives(pkgs, fileSet)
 	if err != nil {
 		return err
@@ -173,7 +155,10 @@ func GCAssert(path string, w io.Writer) error {
 	// Next: invoke Go compiler with -m flags to get the compiler to print
 	// its optimization decisions.
 
-	args := append([]string{"build", "-gcflags=-m -m -d=ssa/check_bce/debug=1"}, "./"+path)
+	args := []string{"build", "-gcflags=-m -m -d=ssa/check_bce/debug=1"}
+	for i := range paths {
+		args = append(args, "./"+paths[i])
+	}
 	cmd := exec.Command("go", args...)
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -288,11 +273,12 @@ type directiveMap map[string]map[int]lineInfo
 
 func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiveMap, error) {
 	fileDirectiveMap := make(directiveMap)
+	mustInlineFuncs := make(map[types.Object]struct{})
 	for _, pkg := range pkgs {
 		for i, file := range pkg.Syntax {
 			commentMap := ast.NewCommentMap(fileSet, file, file.Comments)
 
-			v := newAssertVisitor(commentMap, fileSet, pkg)
+			v := newAssertVisitor(commentMap, fileSet, pkg, mustInlineFuncs)
 			// First: find all lines of code annotated with our gcassert directives.
 			ast.Walk(v, file)
 
@@ -302,5 +288,57 @@ func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiv
 			}
 		}
 	}
+
+	// Do another pass to find all callsites of funcs marked with inline.
+	for _, pkg := range pkgs {
+		for i, file := range pkg.Syntax {
+			v := &inlinedDeclVisitor{assertVisitor: newAssertVisitor(nil, fileSet, pkg, mustInlineFuncs)}
+			filePath := pkg.CompiledGoFiles[i]
+			v.directiveMap = fileDirectiveMap[filePath]
+			if v.directiveMap == nil {
+				v.directiveMap = make(map[int]lineInfo)
+			}
+			ast.Walk(v, file)
+			if len(v.directiveMap) > 0 {
+				fileDirectiveMap[filePath] = v.directiveMap
+			}
+		}
+	}
 	return fileDirectiveMap, nil
+}
+
+type inlinedDeclVisitor struct {
+	assertVisitor
+}
+
+func (v *inlinedDeclVisitor) Visit(node ast.Node) (w ast.Visitor) {
+	if node == nil {
+		return w
+	}
+	pos := node.Pos()
+	lineNumber := v.fileSet.Position(pos).Line
+
+	// Search for all func callsites of functions that were marked with
+	// gcassert:inline and add inline directives to those callsites.
+	switch n := node.(type) {
+	case *ast.CallExpr:
+		var obj types.Object
+		switch n := n.Fun.(type) {
+		case *ast.Ident:
+			obj = v.p.TypesInfo.Uses[n]
+		case *ast.SelectorExpr:
+			sel := v.p.TypesInfo.Selections[n]
+			if sel == nil {
+				break
+			}
+			obj = sel.Obj()
+		}
+		if _, ok := v.mustInlineFuncs[obj]; ok {
+			lineInfo := v.directiveMap[lineNumber]
+			lineInfo.n = node
+			lineInfo.directives = append(lineInfo.directives, inline)
+			v.directiveMap[lineNumber] = lineInfo
+		}
+	}
+	return v
 }

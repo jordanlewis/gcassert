@@ -64,12 +64,12 @@ func TestParseDirectives(t *testing.T) {
 			19: {directives: []assertDirective{bce, inline}},
 		},
 		"testdata/inline.go": {
-			41: {directives: []assertDirective{inline}},
 			45: {directives: []assertDirective{inline}},
-			47: {directives: []assertDirective{inline}},
+			49: {directives: []assertDirective{inline}},
 			51: {directives: []assertDirective{inline}},
-			53: {directives: []assertDirective{inline}},
-			54: {directives: []assertDirective{inline}},
+			55: {directives: []assertDirective{inline}},
+			57: {directives: []assertDirective{inline}},
+			58: {directives: []assertDirective{inline}},
 		},
 	}
 	assert.Equal(t, expectedMap, relMap)
@@ -77,7 +77,7 @@ func TestParseDirectives(t *testing.T) {
 
 func TestGCAssert(t *testing.T) {
 	var w strings.Builder
-	err := GCAssert("./testdata", &w)
+	err := GCAssert(&w, "./testdata", "./testdata/otherpkg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,10 +85,11 @@ func TestGCAssert(t *testing.T) {
 	expectedOutput := `testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
 testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined
 testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined
-testdata/inline.go:41:	alwaysInlined(3): call was not inlined
-testdata/inline.go:47:	sum += notInlinable(i): call was not inlined
-testdata/inline.go:51:	sum += 1: call was not inlined
-testdata/inline.go:54:	test(0).neverInlinedMethod(10): call was not inlined
+testdata/inline.go:45:	alwaysInlined(3): call was not inlined
+testdata/inline.go:51:	sum += notInlinable(i): call was not inlined
+testdata/inline.go:55:	sum += 1: call was not inlined
+testdata/inline.go:58:	test(0).neverInlinedMethod(10): call was not inlined
+testdata/inline.go:60:	otherpkg.A{}.NeverInlined(sum): call was not inlined
 `
 	assert.Equal(t, expectedOutput, w.String())
 }

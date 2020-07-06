@@ -1,6 +1,10 @@
 package gcassert
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/jordanlewis/gcassert/testdata/otherpkg"
+)
 
 func inlinable(a int) int {
 	return a + 2
@@ -52,4 +56,6 @@ func caller() {
 
 	sum += test(0).alwaysInlinedMethod()
 	sum += test(0).neverInlinedMethod(10)
+
+	otherpkg.A{}.NeverInlined(sum)
 }

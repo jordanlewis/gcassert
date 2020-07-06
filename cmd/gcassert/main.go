@@ -11,9 +11,8 @@ import (
 
 func main() {
 	flag.Parse()
-	packagePath := flag.Arg(0)
 	var buf strings.Builder
-	err := gcassert.GCAssert(packagePath, &buf)
+	err := gcassert.GCAssert(&buf, flag.Args()...)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
