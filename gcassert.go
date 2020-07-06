@@ -79,12 +79,11 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 		return w
 	}
 	m := v.commentMap[node]
-COMMENTLOOP:
 	for _, g := range m {
 		for _, c := range g.List {
 			matches := gcAssertRegex.FindStringSubmatch(c.Text)
 			if len(matches) == 0 {
-				continue COMMENTLOOP
+				continue
 			}
 			// The 0th match is the whole string, and the 1st match is the
 			// gcassert directive(s).
