@@ -24,7 +24,8 @@ import (
 func TestParseDirectives(t *testing.T) {
 	fileSet := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles |
+			packages.NeedTypes | packages.NeedTypesInfo,
 		Fset: fileSet,
 	}, "./testdata")
 	if err != nil {
@@ -63,9 +64,12 @@ func TestParseDirectives(t *testing.T) {
 			19: {directives: []assertDirective{bce, inline}},
 		},
 		"testdata/inline.go": {
-			20: {directives: []assertDirective{inline}},
-			22: {directives: []assertDirective{inline}},
-			26: {directives: []assertDirective{inline}},
+			41: {directives: []assertDirective{inline}},
+			45: {directives: []assertDirective{inline}},
+			47: {directives: []assertDirective{inline}},
+			51: {directives: []assertDirective{inline}},
+			53: {directives: []assertDirective{inline}},
+			54: {directives: []assertDirective{inline}},
 		},
 	}
 	assert.Equal(t, expectedMap, relMap)
@@ -81,8 +85,10 @@ func TestGCAssert(t *testing.T) {
 	expectedOutput := `testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
 testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined
 testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined
-testdata/inline.go:22:	sum += notInlinable(i): call was not inlined
-testdata/inline.go:26:	sum += 1: call was not inlined
+testdata/inline.go:41:	alwaysInlined(3): call was not inlined
+testdata/inline.go:47:	sum += notInlinable(i): call was not inlined
+testdata/inline.go:51:	sum += 1: call was not inlined
+testdata/inline.go:54:	test(0).neverInlinedMethod(10): call was not inlined
 `
 	assert.Equal(t, expectedOutput, w.String())
 }

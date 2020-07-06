@@ -17,11 +17,13 @@ import (
 	"go/ast"
 	"go/printer"
 	"go/token"
+	"go/types"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -62,15 +64,26 @@ var gcAssertRegex = regexp.MustCompile(`//gcassert:([\w,]+)`)
 type assertVisitor struct {
 	commentMap ast.CommentMap
 
+	// directiveMap is a map from line number in the source file to the AST node
+	// that the line number corresponded to, as well as any directives that we
+	// parsed.
 	directiveMap map[int]lineInfo
-	fileSet      *token.FileSet
+
+	// mustInlineFuncs is a set of types.Objects that represent FuncDecls of
+	// some kind that were marked with //gcassert:inline by the user.
+	mustInlineFuncs map[types.Object]struct{}
+	fileSet         *token.FileSet
+
+	p *packages.Package
 }
 
-func newAssertVisitor(commentMap ast.CommentMap, fileSet *token.FileSet) assertVisitor {
+func newAssertVisitor(commentMap ast.CommentMap, fileSet *token.FileSet, p *packages.Package) assertVisitor {
 	return assertVisitor{
-		commentMap:   commentMap,
-		fileSet:      fileSet,
-		directiveMap: make(map[int]lineInfo),
+		commentMap:      commentMap,
+		fileSet:         fileSet,
+		directiveMap:    make(map[int]lineInfo),
+		mustInlineFuncs: make(map[types.Object]struct{}),
+		p:               p,
 	}
 }
 
@@ -78,8 +91,35 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 	if node == nil {
 		return w
 	}
+	pos := node.Pos()
+	lineNumber := v.fileSet.Position(pos).Line
+
+	// Search for all func callsites of functions that were marked with
+	// gcassert:inline and add inline directives to those callsites.
+	switch n := node.(type) {
+	case *ast.CallExpr:
+		var obj types.Object
+		switch n := n.Fun.(type) {
+		case *ast.Ident:
+			obj = v.p.TypesInfo.Uses[n]
+		case *ast.SelectorExpr:
+			sel := v.p.TypesInfo.Selections[n]
+			if sel == nil {
+				break
+			}
+			obj = sel.Obj()
+		}
+		if _, ok := v.mustInlineFuncs[obj]; ok {
+			lineInfo := v.directiveMap[lineNumber]
+			lineInfo.n = node
+			lineInfo.directives = append(lineInfo.directives, inline)
+			v.directiveMap[lineNumber] = lineInfo
+		}
+	}
+
 	m := v.commentMap[node]
 	for _, g := range m {
+	COMMENT_LIST:
 		for _, c := range g.List {
 			matches := gcAssertRegex.FindStringSubmatch(c.Text)
 			if len(matches) == 0 {
@@ -89,14 +129,24 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 			// gcassert directive(s).
 			directiveStrings := strings.Split(matches[1], ",")
 
-			pos := node.Pos()
-			lineNumber := v.fileSet.Position(pos).Line
 			lineInfo := v.directiveMap[lineNumber]
 			lineInfo.n = node
 			for _, s := range directiveStrings {
 				directive, err := stringToDirective(s)
 				if err != nil {
 					continue
+				}
+				if directive == inline {
+					switch n := node.(type) {
+					case *ast.FuncDecl:
+						// Add the Object that this FuncDecl's ident is connected
+						// to to our map of must-inline functions.
+						obj := v.p.TypesInfo.Defs[n.Name]
+						if obj != nil {
+							v.mustInlineFuncs[obj] = struct{}{}
+						}
+						continue COMMENT_LIST
+					}
 				}
 				lineInfo.directives = append(lineInfo.directives, directive)
 			}
@@ -111,7 +161,8 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 func GCAssert(path string, w io.Writer) error {
 	fileSet := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles |
+			packages.NeedTypesInfo | packages.NeedTypes,
 		Fset: fileSet,
 	}, path)
 	directiveMap, err := parseDirectives(pkgs, fileSet)
@@ -187,8 +238,22 @@ func GCAssert(path string, w io.Writer) error {
 		}
 	}
 
-	for _, lineToDirectives := range directiveMap {
-		for _, info := range lineToDirectives {
+	keys := make([]string, 0, len(directiveMap))
+	for k := range directiveMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var lines []int
+	for _, k := range keys {
+		lines = lines[:0]
+		lineToDirectives := directiveMap[k]
+		for line := range lineToDirectives {
+			lines = append(lines, line)
+		}
+		sort.Ints(lines)
+		for _, line := range lines {
+			info := lineToDirectives[line]
 			for i, d := range info.directives {
 				// An inlining directive passes if it has compiler output. For
 				// each inlining directive, check if there was matching compiler
@@ -227,7 +292,7 @@ func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiv
 		for i, file := range pkg.Syntax {
 			commentMap := ast.NewCommentMap(fileSet, file, file.Comments)
 
-			v := newAssertVisitor(commentMap, fileSet)
+			v := newAssertVisitor(commentMap, fileSet, pkg)
 			// First: find all lines of code annotated with our gcassert directives.
 			ast.Walk(v, file)
 
