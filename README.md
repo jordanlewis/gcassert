@@ -14,11 +14,18 @@ func addOne(i int) int {
     return i+1
 }
 
+//gcassert:inline
+func addTwo(i int) int {
+    return i+1
+}
+
 func a(ints []int) int {
     var sum int
     for i := range ints {
         //gcassert:bce,inline
         sum += addOne(ints[i])
+
+        sum += addTwo(ints[i]) //gcassert:bce
 
         sum += ints[i] //gcassert:bce
     }
@@ -28,6 +35,9 @@ func a(ints []int) int {
 
 The inline `//gcassert` directive will cause `gcassert` to fail if the line
 `sum += addOne(ints[i])` is either not inlined or contains bounds checks.
+
+A `//gcassert:inline` directive on a function will cause `gcassert` to fail
+if any of the callers of that function do not get inlined.
 
 `//gcassert` comments expect a comma-separated list of directives after
 `//gcassert:`. They can be included above the line in question or after, as an
@@ -70,9 +80,12 @@ that wasn't upheld when running the compiler on the package.
 //gcassert:inline
 ```
 
-The inline directive asserts that the following statement contains a function
-that is inlined by the compiler. If the function does not get inlined, gcassert
-will fail.
+The inline directive on a CallExpr asserts that the following statement
+contains a function that is inlined by the compiler. If the function does not
+get inlined, gcassert will fail.
+
+The inline directive on a FuncDecl asserts that every caller of that function
+is actually inlined by the compiler
 
 ```
 //gcassert:bce
