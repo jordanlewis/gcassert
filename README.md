@@ -51,11 +51,21 @@ inline comment.
 
 ## Installation
 
+To get the gcassert binary:
+
 ```
 go get github.com/jordanlewis/gcassert/cmd/gcassert
 ```
 
+To get the gcassert library:
+
+```
+go get github.com/jordanlewis/gcassert
+```
+
 ## Usage
+
+### As a binary
 
 Run gcassert on packages containing gcassert directives, like this:
 
@@ -83,6 +93,27 @@ testdata/inline.go:58:  test(0).neverInlinedMethod(10): call was not inlined
 
 Inspecting each of the listed lines will show a `//gcassert` directive
 that wasn't upheld when running the compiler on the package.
+
+### As a library
+
+gcassert is runnable as a library as well, for integration into your linter
+suite. It has a single package function, `gcassert.GCAssert`.
+
+To use it, pass in an `io.Writer` to which errors will be written and a list of
+paths to check for `gcassert` assertions, like this:
+
+```
+package main
+
+import "github.com/jordanlewis/gcassert"
+
+func main() {
+    var buf strings.Builder
+    if err := gcassert.GCAssert(&buf, "./path/to/package", "./otherpath/to/package"); err != nil {
+        // handle non-lint-failure related errors
+    }
+}
+```
 
 ## Directives
 
