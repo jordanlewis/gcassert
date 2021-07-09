@@ -186,9 +186,11 @@ func GCAssert(w io.Writer, paths ...string) error {
 			}
 			if lineToDirectives := directiveMap[absPath]; lineToDirectives != nil {
 				info := lineToDirectives[lineNo]
-				if info.passedDirective == nil {
-					info.passedDirective = make(map[int]bool)
-					lineToDirectives[lineNo] = info
+				if len(info.directives) > 0 {
+					if info.passedDirective == nil {
+						info.passedDirective = make(map[int]bool)
+						lineToDirectives[lineNo] = info
+					}
 				}
 				for i, d := range info.directives {
 					switch d {
