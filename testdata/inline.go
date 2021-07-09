@@ -28,7 +28,7 @@ func (t test) alwaysInlinedMethod() int {
 func (t test) neverInlinedMethod(n int) int {
 	sum := 0
 	for i := 0; i < n; i++ {
-		sum += i
+		fmt.Println(i)
 	}
 	return sum
 }
