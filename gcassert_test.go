@@ -61,6 +61,10 @@ func TestParseDirectives(t *testing.T) {
 			57: {directives: []assertDirective{inline}},
 			58: {directives: []assertDirective{inline}},
 		},
+		"testdata/noescape.go": {
+			21: {directives: []assertDirective{noescape}},
+			28: {directives: []assertDirective{noescape}},
+		},
 	}
 	assert.Equal(t, expectedMap, relMap)
 }
@@ -72,7 +76,8 @@ func TestGCAssert(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedOutput := `testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
+	expectedOutput := `testdata/noescape.go:21:	foo := foo{a: 1, b: 2}: foo escapes to heap:
+testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
 testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined
 testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined
 testdata/inline.go:45:	alwaysInlined(3): call was not inlined

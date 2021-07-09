@@ -26,6 +26,7 @@ const (
 	noDirective assertDirective = iota
 	inline
 	bce
+	noescape
 )
 
 func stringToDirective(s string) (assertDirective, error) {
@@ -34,6 +35,8 @@ func stringToDirective(s string) (assertDirective, error) {
 		return inline, nil
 	case "bce":
 		return bce, nil
+	case "noescape":
+		return noescape, nil
 	}
 	return noDirective, errors.New(fmt.Sprintf("no such directive %s", s))
 }
@@ -208,6 +211,12 @@ func GCAssert(w io.Writer, paths ...string) error {
 					case inline:
 						if strings.HasPrefix(message, "inlining call to") {
 							info.passedDirective[i] = true
+						}
+					case noescape:
+						if strings.HasSuffix(message, "escapes to heap:") {
+							if err := printAssertionFailure(cwd, fileSet, info, w, message); err != nil {
+								return err
+							}
 						}
 					}
 				}

@@ -3,6 +3,12 @@
 gcassert is a program for making assertions about compiler decisions in
 Golang programs, via inline comment directives like `//gcassert:inline`.
 
+Currently supported [directives](#directives):
+
+- `//gcassert:inline` to assert function callsites are inlined
+- `//gcassert:bce` to assert bounds checks are eliminated
+- `//gcassert:noescape` to assert variables don't escape to the heap
+
 ## Example
 
 Given a file `foo.go`:
@@ -65,9 +71,14 @@ following output:
 
 ```
 $ gcassert ./testdata
-testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
-testdata/bce.go:16:	sum += notInlinable(ints[i]): call was not inlined
-testdata/inline.go:22:	sum += notInlinable(i): call was not inlined
+testdata/noescape.go:21:        foo := foo{a: 1, b: 2}: foo escapes to heap:
+testdata/bce.go:8:      fmt.Println(ints[5]): Found IsInBounds
+testdata/bce.go:17:     sum += notInlinable(ints[i]): call was not inlined
+testdata/bce.go:19:     sum += notInlinable(ints[i]): call was not inlined
+testdata/inline.go:45:  alwaysInlined(3): call was not inlined
+testdata/inline.go:51:  sum += notInlinable(i): call was not inlined
+testdata/inline.go:55:  sum += 1: call was not inlined
+testdata/inline.go:58:  test(0).neverInlinedMethod(10): call was not inlined
 ```
 
 Inspecting each of the listed lines will show a `//gcassert` directive
@@ -85,7 +96,7 @@ contains a function that is inlined by the compiler. If the function does not
 get inlined, gcassert will fail.
 
 The inline directive on a FuncDecl asserts that every caller of that function
-is actually inlined by the compiler
+is actually inlined by the compiler.
 
 ```
 //gcassert:bce
@@ -94,3 +105,10 @@ is actually inlined by the compiler
 The bce directive asserts that the following statement contains a slice index
 that has no necessary bounds checks. If the compiler adds bounds checks,
 gcassert will fail.
+
+```
+//gcassert:noescape
+```
+
+The noescape directive asserts that the following variable does not escape to
+the heap. If the compiler forces the variable to escape, gcassert will fail.
