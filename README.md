@@ -13,7 +13,7 @@ Currently supported [directives](#directives):
 
 Given a file `foo.go`:
 
-```
+```go
 package foo
 
 func addOne(i int) int {
@@ -53,13 +53,13 @@ inline comment.
 
 To get the gcassert binary:
 
-```
+```bash
 go get github.com/jordanlewis/gcassert/cmd/gcassert
 ```
 
 To get the gcassert library:
 
-```
+```bash
 go get github.com/jordanlewis/gcassert
 ```
 
@@ -69,7 +69,7 @@ go get github.com/jordanlewis/gcassert
 
 Run gcassert on packages containing gcassert directives, like this:
 
-```
+```bash
 gcassert ./package/path
 ```
 
@@ -79,7 +79,7 @@ respected by the compiler.
 For example, running on the testdata directory in this library will produce the
 following output:
 
-```
+```bash
 $ gcassert ./testdata
 testdata/noescape.go:21:        foo := foo{a: 1, b: 2}: foo escapes to heap:
 testdata/bce.go:8:      fmt.Println(ints[5]): Found IsInBounds
@@ -102,7 +102,7 @@ suite. It has a single package function, `gcassert.GCAssert`.
 To use it, pass in an `io.Writer` to which errors will be written and a list of
 paths to check for `gcassert` assertions, like this:
 
-```
+```go
 package main
 
 import "github.com/jordanlewis/gcassert"
