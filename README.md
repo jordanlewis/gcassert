@@ -111,7 +111,10 @@ func main() {
     var buf strings.Builder
     if err := gcassert.GCAssert(&buf, "./path/to/package", "./otherpath/to/package"); err != nil {
         // handle non-lint-failure related errors
+        panic(err)
     }
+    // Output the errors to stdout.
+    fmt.Println(buf.String())
 }
 ```
 
