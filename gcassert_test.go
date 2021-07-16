@@ -64,6 +64,9 @@ func TestParseDirectives(t *testing.T) {
 		"testdata/noescape.go": {
 			21: {directives: []assertDirective{noescape}},
 			28: {directives: []assertDirective{noescape}},
+			34: {directives: []assertDirective{noescape}},
+			41: {directives: []assertDirective{noescape}},
+			44: {directives: []assertDirective{noescape}},
 		},
 	}
 	assert.Equal(t, expectedMap, relMap)
@@ -77,6 +80,13 @@ func TestGCAssert(t *testing.T) {
 	}
 
 	expectedOutput := `testdata/noescape.go:21:	foo := foo{a: 1, b: 2}: foo escapes to heap:
+testdata/noescape.go:34:	// This annotation should fail, because f will escape to the heap.
+//gcassert:noescape
+func (f foo) setA(a int) *foo {
+	f.a = a
+	return &f
+}: f escapes to heap:
+testdata/noescape.go:44:	: a escapes to heap:
 testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
 testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined
 testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined

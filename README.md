@@ -144,5 +144,32 @@ gcassert will fail.
 //gcassert:noescape
 ```
 
-The noescape directive asserts that the following variable does not escape to
-the heap. If the compiler forces the variable to escape, gcassert will fail.
+The noescape directive asserts that the line it's attached to (meaning,
+whichever Go AST node is annotated by the comment) produces no "escaped to
+heap" messages by the Go compiler.
+
+The Go compiler emits an "escaped to heap" message for a particular line of
+code if any variables on that line of code are forced to escape.
+
+Typically, the compiler will emit such a message on the line of code that the
+variable is declared on. This includes method receivers, method arguments, and
+var declarations.
+
+This means that the annotation must be attached to the line of code that
+actually contains the variable in question. For a multi-line function
+signature, for example, the annotation must come on the line that has the
+variable that would be expected not to escape to the heap:
+
+```go
+type foo struct { a int }
+
+// This annotation will pass, because f does not escape.
+//gcassert:noescape
+func (f foo) returnA(
+// This annotation will fail, because a will escape to the heap.
+//gcassert:noescape
+    a int,
+) *int {
+    return &a
+}
+```
