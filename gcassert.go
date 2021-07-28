@@ -52,7 +52,7 @@ type lineInfo struct {
 	passedDirective map[int]bool
 }
 
-var gcAssertRegex = regexp.MustCompile(`//gcassert:([\w,]+)`)
+var gcAssertRegex = regexp.MustCompile(`// ?gcassert:([\w,]+)`)
 
 type assertVisitor struct {
 	commentMap ast.CommentMap
