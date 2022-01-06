@@ -59,6 +59,7 @@ func TestParseDirectives(t *testing.T) {
 			52: {directives: []assertDirective{inline}},
 			56: {directives: []assertDirective{inline}},
 			59: {directives: []assertDirective{inline}},
+			61: {directives: []assertDirective{inline}},
 			63: {directives: []assertDirective{inline}},
 		},
 		"testdata/noescape.go": {
@@ -93,6 +94,7 @@ testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined
 testdata/inline.go:46:	alwaysInlined(3): call was not inlined
 testdata/inline.go:52:	sum += notInlinable(i): call was not inlined
 testdata/inline.go:56:	sum += 1: call was not inlined
+testdata/inline.go:61:	test(0).alwaysInlinedMethod(): call was not inlined
 testdata/inline.go:63:	test(0).neverInlinedMethod(10): call was not inlined
 testdata/inline.go:65:	otherpkg.A{}.NeverInlined(sum): call was not inlined
 `

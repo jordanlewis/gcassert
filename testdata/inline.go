@@ -58,7 +58,7 @@ func caller() {
 	if bits.UintSize == 64 {
 		sum += test(0).alwaysInlinedMethod()
 	} else {
-		// placeholder
+		sum -= test(0).alwaysInlinedMethod()
 	}
 	sum += test(0).neverInlinedMethod(10)
 
