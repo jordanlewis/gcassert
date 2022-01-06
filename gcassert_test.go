@@ -54,12 +54,12 @@ func TestParseDirectives(t *testing.T) {
 			19: {directives: []assertDirective{bce, inline}},
 		},
 		"testdata/inline.go": {
-			45: {directives: []assertDirective{inline}},
-			49: {directives: []assertDirective{inline}},
-			51: {directives: []assertDirective{inline}},
-			55: {directives: []assertDirective{inline}},
-			57: {directives: []assertDirective{inline}},
-			58: {directives: []assertDirective{inline}},
+			46: {directives: []assertDirective{inline}},
+			50: {directives: []assertDirective{inline}},
+			52: {directives: []assertDirective{inline}},
+			56: {directives: []assertDirective{inline}},
+			59: {directives: []assertDirective{inline}},
+			63: {directives: []assertDirective{inline}},
 		},
 		"testdata/noescape.go": {
 			21: {directives: []assertDirective{noescape}},
@@ -90,11 +90,11 @@ testdata/noescape.go:44:	: a escapes to heap:
 testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
 testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined
 testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined
-testdata/inline.go:45:	alwaysInlined(3): call was not inlined
-testdata/inline.go:51:	sum += notInlinable(i): call was not inlined
-testdata/inline.go:55:	sum += 1: call was not inlined
-testdata/inline.go:58:	test(0).neverInlinedMethod(10): call was not inlined
-testdata/inline.go:60:	otherpkg.A{}.NeverInlined(sum): call was not inlined
+testdata/inline.go:46:	alwaysInlined(3): call was not inlined
+testdata/inline.go:52:	sum += notInlinable(i): call was not inlined
+testdata/inline.go:56:	sum += 1: call was not inlined
+testdata/inline.go:63:	test(0).neverInlinedMethod(10): call was not inlined
+testdata/inline.go:65:	otherpkg.A{}.NeverInlined(sum): call was not inlined
 `
 	assert.Equal(t, expectedOutput, w.String())
 }

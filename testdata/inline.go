@@ -2,6 +2,7 @@ package gcassert
 
 import (
 	"fmt"
+	"math/bits"
 
 	"github.com/jordanlewis/gcassert/testdata/otherpkg"
 )
@@ -54,7 +55,11 @@ func caller() {
 	// This assertion should fail as there's nothing to inline.
 	sum += 1 //gcassert:inline
 
-	sum += test(0).alwaysInlinedMethod()
+	if bits.UintSize == 64 {
+		sum += test(0).alwaysInlinedMethod()
+	} else {
+		// placeholder
+	}
 	sum += test(0).neverInlinedMethod(10)
 
 	otherpkg.A{}.NeverInlined(sum)
