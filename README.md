@@ -1,7 +1,7 @@
 # gcassert
 
 gcassert is a program for making assertions about compiler decisions in
-Golang programs, via inline comment directives like `//gcassert:inline`.
+Go programs, via inline comment directives like `//gcassert:inline`.
 
 Currently supported [directives](#directives):
 
