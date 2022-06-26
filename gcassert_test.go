@@ -54,12 +54,12 @@ func TestParseDirectives(t *testing.T) {
 			19: {directives: []assertDirective{bce, inline}},
 		},
 		"testdata/inline.go": {
-			45: {directives: []assertDirective{inline}},
+			45: {inlinableCallsites: []passInfo{{colNo: 15}}},
 			49: {directives: []assertDirective{inline}},
 			51: {directives: []assertDirective{inline}},
 			55: {directives: []assertDirective{inline}},
-			57: {directives: []assertDirective{inline}},
-			58: {directives: []assertDirective{inline}},
+			57: {inlinableCallsites: []passInfo{{colNo: 36}}},
+			58: {inlinableCallsites: []passInfo{{colNo: 35}}},
 		},
 		"testdata/noescape.go": {
 			21: {directives: []assertDirective{noescape}},
@@ -67,6 +67,9 @@ func TestParseDirectives(t *testing.T) {
 			34: {directives: []assertDirective{noescape}},
 			41: {directives: []assertDirective{noescape}},
 			44: {directives: []assertDirective{noescape}},
+		},
+		"testdata/issue5.go": {
+			4: {inlinableCallsites: []passInfo{{colNo: 14}}},
 		},
 	}
 	assert.Equal(t, expectedMap, relMap)
@@ -95,6 +98,7 @@ testdata/inline.go:51:	sum += notInlinable(i): call was not inlined
 testdata/inline.go:55:	sum += 1: call was not inlined
 testdata/inline.go:58:	test(0).neverInlinedMethod(10): call was not inlined
 testdata/inline.go:60:	otherpkg.A{}.NeverInlined(sum): call was not inlined
+testdata/issue5.go:4:	Gen().Layout(): call was not inlined
 `
 	assert.Equal(t, expectedOutput, w.String())
 }

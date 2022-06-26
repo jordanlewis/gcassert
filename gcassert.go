@@ -41,9 +41,19 @@ func stringToDirective(s string) (assertDirective, error) {
 	return noDirective, errors.New(fmt.Sprintf("no such directive %s", s))
 }
 
+// passInfo contains info on a passed directive for directives that have
+// compiler output when they pass, such as the inlining directive.
+type passInfo struct {
+	passed bool
+	// colNo is the column number of the location of the inlineable callsite.
+	colNo int
+}
+
 type lineInfo struct {
 	n          ast.Node
 	directives []assertDirective
+
+	inlinableCallsites []passInfo
 	// passedDirective is a map from index into the directives slice to a
 	// boolean that says whether or not the directive succeeded, in the case
 	// of directives like inlining that have compiler output if they passed.
@@ -168,7 +178,7 @@ func GCAssert(w io.Writer, paths ...string) error {
 	}()
 
 	scanner := bufio.NewScanner(pr)
-	optInfo := regexp.MustCompile(`([\.\/\w]+):(\d+):\d+: (.*)`)
+	optInfo := regexp.MustCompile(`([\.\/\w]+):(\d+):(\d+): (.*)`)
 	boundsCheck := "Found IsInBounds"
 	sliceBoundsCheck := "Found SliceIsInBounds"
 
@@ -181,7 +191,11 @@ func GCAssert(w io.Writer, paths ...string) error {
 			if err != nil {
 				return err
 			}
-			message := matches[3]
+			colNo, err := strconv.Atoi(matches[3])
+			if err != nil {
+				return err
+			}
+			message := matches[4]
 
 			absPath, err := filepath.Abs(path)
 			if err != nil {
@@ -220,6 +234,12 @@ func GCAssert(w io.Writer, paths ...string) error {
 						}
 					}
 				}
+				for i := range info.inlinableCallsites {
+					cs := &info.inlinableCallsites[i]
+					if cs.colNo == colNo {
+						cs.passed = true
+					}
+				}
 			}
 		}
 	}
@@ -240,16 +260,25 @@ func GCAssert(w io.Writer, paths ...string) error {
 		sort.Ints(lines)
 		for _, line := range lines {
 			info := lineToDirectives[line]
-			for i, d := range info.directives {
+			for _, d := range info.inlinableCallsites {
 				// An inlining directive passes if it has compiler output. For
 				// each inlining directive, check if there was matching compiler
 				// output and fail if not.
-				if d == inline {
-					if !info.passedDirective[i] {
-						if err := printAssertionFailure(
-							cwd, fileSet, info, w, "call was not inlined"); err != nil {
-							return err
-						}
+				if !d.passed {
+					if err := printAssertionFailure(
+						cwd, fileSet, info, w, "call was not inlined"); err != nil {
+						return err
+					}
+				}
+			}
+			for i, d := range info.directives {
+				if d != inline {
+					continue
+				}
+				if !info.passedDirective[i] {
+					if err := printAssertionFailure(
+						cwd, fileSet, info, w, "call was not inlined"); err != nil {
+						return err
 					}
 				}
 			}
@@ -270,6 +299,7 @@ func printAssertionFailure(cwd string, fileSet *token.FileSet, info lineInfo, w 
 	return nil
 }
 
+// directiveMap maps filepath to line number to lineInfo
 type directiveMap map[string]map[int]lineInfo
 
 func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiveMap, error) {
@@ -323,6 +353,7 @@ func (v *inlinedDeclVisitor) Visit(node ast.Node) (w ast.Visitor) {
 	// gcassert:inline and add inline directives to those callsites.
 	switch n := node.(type) {
 	case *ast.CallExpr:
+		callExpr := n
 		var obj types.Object
 		switch n := n.Fun.(type) {
 		case *ast.Ident:
@@ -337,7 +368,8 @@ func (v *inlinedDeclVisitor) Visit(node ast.Node) (w ast.Visitor) {
 		if _, ok := v.mustInlineFuncs[obj]; ok {
 			lineInfo := v.directiveMap[lineNumber]
 			lineInfo.n = node
-			lineInfo.directives = append(lineInfo.directives, inline)
+			lineInfo.inlinableCallsites = append(lineInfo.inlinableCallsites,
+				passInfo{colNo: v.fileSet.Position(callExpr.Lparen).Column})
 			v.directiveMap[lineNumber] = lineInfo
 		}
 	}
