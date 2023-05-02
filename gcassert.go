@@ -158,7 +158,7 @@ func GCAssert(w io.Writer, paths ...string) error {
 	// Next: invoke Go compiler with -m flags to get the compiler to print
 	// its optimization decisions.
 
-	args := []string{"build", "-gcflags=-m -m -d=ssa/check_bce/debug=1"}
+	args := []string{"build", "-gcflags=-m=2 -d=ssa/check_bce/debug=1"}
 	for i := range paths {
 		args = append(args, "./"+paths[i])
 	}
@@ -169,12 +169,23 @@ func GCAssert(w io.Writer, paths ...string) error {
 	}
 	cmd.Dir = cwd
 	pr, pw := io.Pipe()
-	cmd.Stdout = pw
-	cmd.Stderr = pw
+	// Create a temp file to log all diagnostic output.
+	f, err := os.CreateTemp("", "gcassert-*.log")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("See %s for full output.\n", f.Name())
+	// Log full 'go build' command.
+	fmt.Fprintln(f, cmd)
+	mw := io.MultiWriter(pw, f)
+	cmd.Stdout = mw
+	cmd.Stderr = mw
 	cmdErr := make(chan error, 1)
+
 	go func() {
 		cmdErr <- cmd.Run()
-		pw.Close()
+		_ = pw.Close()
+		_ = f.Close()
 	}()
 
 	scanner := bufio.NewScanner(pr)
@@ -283,6 +294,10 @@ func GCAssert(w io.Writer, paths ...string) error {
 				}
 			}
 		}
+	}
+	// If 'go build' failed, return the error.
+	if err := <-cmdErr; err != nil {
+		return err
 	}
 	return nil
 }
