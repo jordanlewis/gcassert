@@ -30,6 +30,7 @@ func returnsStackVar() foo {
 }
 
 // This annotation should fail, because f will escape to the heap.
+//
 //gcassert:noescape
 func (f foo) setA(a int) *foo {
     f.a = a

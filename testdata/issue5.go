@@ -13,6 +13,7 @@ func Gen() S {
 // Gen().Layout() has another inlined function in it, Gen().
 
 //gcassert:inline
+//go:noinline
 func (s S) Layout() {
 	select {}
 }
