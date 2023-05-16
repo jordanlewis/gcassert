@@ -109,7 +109,7 @@ import "github.com/jordanlewis/gcassert"
 
 func main() {
     var buf strings.Builder
-    if err := gcassert.GCAssert(&buf, "./path/to/package", "./otherpath/to/package"); err != nil {
+    if err := gcassert.GCAssert(&buf, false /* useBazel */ "./path/to/package", "./otherpath/to/package"); err != nil {
         // handle non-lint-failure related errors
         panic(err)
     }

@@ -2,7 +2,6 @@ package gcassert
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/printer"
@@ -38,7 +37,7 @@ func stringToDirective(s string) (assertDirective, error) {
 	case "noescape":
 		return noescape, nil
 	}
-	return noDirective, errors.New(fmt.Sprintf("no such directive %s", s))
+	return noDirective, fmt.Errorf("no such directive %s", s)
 }
 
 // passInfo contains info on a passed directive for directives that have
@@ -143,13 +142,24 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 
 // GCAssert searches through the packages at the input path and writes failures
 // to comply with //gcassert directives to the given io.Writer.
-func GCAssert(w io.Writer, paths ...string) error {
+func GCAssert(w io.Writer, useBazel bool, paths ...string) error {
+	for _, path := range paths {
+		// Assert that all paths begin with './'
+		// This is needed for ensuring that packages.Load and parseDirectives work
+		// as expected.
+		if !strings.HasPrefix(path, "./") {
+			return fmt.Errorf("all paths should be prefixed with './': got %s", path)
+		}
+	}
 	fileSet := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles |
 			packages.NeedTypesInfo | packages.NeedTypes,
 		Fset: fileSet,
 	}, paths...)
+	if err != nil {
+		return err
+	}
 	directiveMap, err := parseDirectives(pkgs, fileSet)
 	if err != nil {
 		return err
@@ -158,11 +168,22 @@ func GCAssert(w io.Writer, paths ...string) error {
 	// Next: invoke Go compiler with -m flags to get the compiler to print
 	// its optimization decisions.
 
-	args := []string{"build", "-gcflags=-m=2 -d=ssa/check_bce/debug=1"}
-	for i := range paths {
-		args = append(args, "./"+paths[i])
+	var args []string
+	var cmd *exec.Cmd
+
+	if useBazel {
+		args = []string{"build"}
+		for i := range paths {
+			args = append(args, strings.TrimPrefix(paths[i], "./"))
+		}
+		args = append(args, "--@io_bazel_rules_go//go/config:gc_goopts=-m=2,-d=ssa/check_bce/debug=1")
+		cmd = exec.Command("bazel", args...)
+	} else {
+		args = []string{"build", "-gcflags=-m=2 -d=ssa/check_bce/debug=1"}
+		args = append(args, paths...)
+		cmd = exec.Command("go", args...)
 	}
-	cmd := exec.Command("go", args...)
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
