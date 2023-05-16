@@ -77,7 +77,7 @@ func TestParseDirectives(t *testing.T) {
 
 func TestGCAssert(t *testing.T) {
 	var w strings.Builder
-	err := GCAssert(&w, "./testdata", "./testdata/otherpkg")
+	err := GCAssert(&w, false /* useBazel */, "./testdata", "./testdata/otherpkg")
 	if err != nil {
 		t.Fatal(err)
 	}

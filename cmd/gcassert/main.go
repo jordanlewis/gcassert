@@ -9,10 +9,12 @@ import (
 	"github.com/jordanlewis/gcassert"
 )
 
+var useBazel = flag.Bool("use-bazel", false, "use bazel to build")
+
 func main() {
 	flag.Parse()
 	var buf strings.Builder
-	err := gcassert.GCAssert(&buf, flag.Args()...)
+	err := gcassert.GCAssert(&buf, *useBazel, flag.Args()...)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
