@@ -28,6 +28,15 @@ const (
 	noescape
 )
 
+var (
+	shouldUseBazel bool
+	debugMode      bool
+)
+
+func init() {
+	bazelInlineSites = make(map[string]struct{})
+}
+
 func stringToDirective(s string) (assertDirective, error) {
 	switch s {
 	case "inline":
@@ -62,6 +71,7 @@ type lineInfo struct {
 }
 
 var gcAssertRegex = regexp.MustCompile(`// ?gcassert:([\w,]+)`)
+var bazelInlineSites map[string]struct{}
 
 type assertVisitor struct {
 	commentMap ast.CommentMap
@@ -142,45 +152,44 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 
 // GCAssert searches through the packages at the input path and writes failures
 // to comply with //gcassert directives to the given io.Writer.
-func GCAssert(w io.Writer, useBazel bool, paths ...string) error {
-	for _, path := range paths {
-		// Assert that all paths begin with './'
-		// This is needed for ensuring that packages.Load and parseDirectives work
-		// as expected.
-		if !strings.HasPrefix(path, "./") {
-			return fmt.Errorf("all paths should be prefixed with './': got %s", path)
-		}
-	}
+func GCAssert(w io.Writer, useBazel, debug bool, paths ...string) error {
+	shouldUseBazel, debugMode = useBazel, debug
+
 	fileSet := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles |
-			packages.NeedTypesInfo | packages.NeedTypes,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
+			packages.NeedCompiledGoFiles | packages.NeedTypesInfo | packages.NeedTypes,
 		Fset: fileSet,
 	}, paths...)
 	if err != nil {
 		return err
 	}
+	if numErrors := packages.PrintErrors(pkgs); numErrors != 0 {
+		return fmt.Errorf("got %d errors while loading packages", numErrors)
+	}
+
 	directiveMap, err := parseDirectives(pkgs, fileSet)
 	if err != nil {
 		return err
 	}
 
-	// Next: invoke Go compiler with -m flags to get the compiler to print
-	// its optimization decisions.
+	// Invoke Go compiler (either directly or through Bazel) with -m flags
+	// to get the compiler to print its optimization decisions.
+	// Note: Inlining decisions for some calls are not printed when using
+	// Bazel (we are not sure why). To verify inlining decisions through Bazel,
+	// we inspect the object code directly.
 
 	var args []string
 	var cmd *exec.Cmd
 
-	if useBazel {
-		args = []string{"build"}
-		for i := range paths {
-			args = append(args, strings.TrimPrefix(paths[i], "./"))
+	if shouldUseBazel {
+		bazelPkgs := make([]string, 0, len(paths))
+		for _, path := range paths {
+			bazelPkgs = append(bazelPkgs, strings.TrimPrefix(path, "./"))
 		}
-		args = append(args, "--@io_bazel_rules_go//go/config:gc_goopts=-m=2,-d=ssa/check_bce/debug=1")
-		cmd = exec.Command("bazel", args...)
+		cmd = getBazelBuildCmd(bazelPkgs)
 	} else {
-		args = []string{"build", "-gcflags=-m=2 -d=ssa/check_bce/debug=1"}
-		args = append(args, paths...)
+		args = append([]string{"build", "-gcflags=-m=2 -d=ssa/check_bce/debug=1"}, paths...)
 		cmd = exec.Command("go", args...)
 	}
 
@@ -190,23 +199,33 @@ func GCAssert(w io.Writer, useBazel bool, paths ...string) error {
 	}
 	cmd.Dir = cwd
 	pr, pw := io.Pipe()
-	// Create a temp file to log all diagnostic output.
-	f, err := os.CreateTemp("", "gcassert-*.log")
-	if err != nil {
-		return err
+	var f *os.File
+	var mw io.Writer
+	if debugMode {
+		// Create a temp file to log all diagnostic output.
+		var err error
+		f, err = os.CreateTemp("", "gcassert-*.log")
+		if err != nil {
+			return err
+		}
+		defer fmt.Printf("See %s for full output.\n", f.Name())
+		// Log full 'go build / bazel build' command.
+		fmt.Fprintln(f, cmd)
+		mw = io.MultiWriter(pw, f)
+		cmd.Stdout = mw
+		cmd.Stderr = mw
+	} else {
+		cmd.Stdout = pw
+		cmd.Stderr = pw
 	}
-	fmt.Printf("See %s for full output.\n", f.Name())
-	// Log full 'go build' command.
-	fmt.Fprintln(f, cmd)
-	mw := io.MultiWriter(pw, f)
-	cmd.Stdout = mw
-	cmd.Stderr = mw
 	cmdErr := make(chan error, 1)
 
 	go func() {
 		cmdErr <- cmd.Run()
 		_ = pw.Close()
-		_ = f.Close()
+		if f != nil {
+			_ = f.Close()
+		}
 	}()
 
 	scanner := bufio.NewScanner(pr)
@@ -276,54 +295,67 @@ func GCAssert(w io.Writer, useBazel bool, paths ...string) error {
 		}
 	}
 
-	keys := make([]string, 0, len(directiveMap))
-	for k := range directiveMap {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var lines []int
-	for _, k := range keys {
-		lines = lines[:0]
-		lineToDirectives := directiveMap[k]
-		for line := range lineToDirectives {
-			lines = append(lines, line)
-		}
-		sort.Ints(lines)
-		for _, line := range lines {
-			info := lineToDirectives[line]
-			for _, d := range info.inlinableCallsites {
-				// An inlining directive passes if it has compiler output. For
-				// each inlining directive, check if there was matching compiler
-				// output and fail if not.
-				if !d.passed {
-					if err := printAssertionFailure(
-						cwd, fileSet, info, w, "call was not inlined"); err != nil {
-						return err
-					}
-				}
-			}
-			for i, d := range info.directives {
-				if d != inline {
-					continue
-				}
-				if !info.passedDirective[i] {
-					if err := printAssertionFailure(
-						cwd, fileSet, info, w, "call was not inlined"); err != nil {
-						return err
-					}
-				}
-			}
-		}
-	}
-	// If 'go build' failed, return the error.
+	// If 'go build / bazel build' failed, return the error.
 	if err := <-cmdErr; err != nil {
 		return err
+	}
+
+	// If the Go compiler was invoked directly, use its output to check if inlining
+	// directives passed.
+	if !shouldUseBazel {
+		keys := make([]string, 0, len(directiveMap))
+		for k := range directiveMap {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		var lines []int
+		for _, k := range keys {
+			lines = lines[:0]
+			lineToDirectives := directiveMap[k]
+			for line := range lineToDirectives {
+				lines = append(lines, line)
+			}
+			sort.Ints(lines)
+			for _, line := range lines {
+				info := lineToDirectives[line]
+				for _, d := range info.inlinableCallsites {
+					// An inlining directive passes if it has compiler output. For
+					// each inlining directive, check if there was matching compiler
+					// output and fail if not.
+					if !d.passed {
+						if err := printAssertionFailure(
+							cwd, fileSet, info, w, "call was not inlined"); err != nil {
+							return err
+						}
+					}
+				}
+				for i, d := range info.directives {
+					if d != inline {
+						continue
+					}
+					if !info.passedDirective[i] {
+						if err := printAssertionFailure(
+							cwd, fileSet, info, w, "call was not inlined"); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+	} else {
+		// If the Go compiler was invoked through Bazel, inspect the object file of each
+		// package to check if inlining directives passed.
+		if err := assertInlineByInspectingObjectFiles(w, paths); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func printAssertionFailure(cwd string, fileSet *token.FileSet, info lineInfo, w io.Writer, message string) error {
+func printAssertionFailure(
+	cwd string, fileSet *token.FileSet, info lineInfo, w io.Writer, message string,
+) error {
 	var buf strings.Builder
 	_ = printer.Fprint(&buf, fileSet, info.n)
 	pos := fileSet.Position(info.n.Pos())
@@ -338,7 +370,9 @@ func printAssertionFailure(cwd string, fileSet *token.FileSet, info lineInfo, w 
 // directiveMap maps filepath to line number to lineInfo
 type directiveMap map[string]map[int]lineInfo
 
-func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiveMap, error) {
+func parseDirectives(
+	pkgs []*packages.Package, fileSet *token.FileSet,
+) (directiveMap, error) {
 	fileDirectiveMap := make(directiveMap)
 	mustInlineFuncs := make(map[types.Object]struct{})
 	for _, pkg := range pkgs {
@@ -349,9 +383,9 @@ func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiv
 			// First: find all lines of code annotated with our gcassert directives.
 			ast.Walk(v, file)
 
-			file := pkg.CompiledGoFiles[i]
+			filePath := pkg.CompiledGoFiles[i]
 			if len(v.directiveMap) > 0 {
-				fileDirectiveMap[file] = v.directiveMap
+				fileDirectiveMap[filePath] = v.directiveMap
 			}
 		}
 	}
@@ -359,7 +393,9 @@ func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiv
 	// Do another pass to find all callsites of funcs marked with inline.
 	for _, pkg := range pkgs {
 		for i, file := range pkg.Syntax {
-			v := &inlinedDeclVisitor{assertVisitor: newAssertVisitor(nil, fileSet, pkg, mustInlineFuncs)}
+			v := &inlinedDeclVisitor{
+				assertVisitor: newAssertVisitor(nil, fileSet, pkg, mustInlineFuncs),
+			}
 			filePath := pkg.CompiledGoFiles[i]
 			v.directiveMap = fileDirectiveMap[filePath]
 			if v.directiveMap == nil {
@@ -402,6 +438,10 @@ func (v *inlinedDeclVisitor) Visit(node ast.Node) (w ast.Visitor) {
 			obj = sel.Obj()
 		}
 		if _, ok := v.mustInlineFuncs[obj]; ok {
+			// fnCallIdentifierInObjectFile is needed for verifying inline checks when using
+			// bazel to build.
+			fnCallIdentifierInObjectFile := getFnCallIdentifierInObjectFile(obj)
+			bazelInlineSites[fnCallIdentifierInObjectFile] = struct{}{}
 			lineInfo := v.directiveMap[lineNumber]
 			lineInfo.n = node
 			lineInfo.inlinableCallsites = append(lineInfo.inlinableCallsites,
