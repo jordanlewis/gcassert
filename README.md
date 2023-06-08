@@ -109,7 +109,7 @@ import "github.com/jordanlewis/gcassert"
 
 func main() {
     var buf strings.Builder
-    if err := gcassert.GCAssert(&buf, false /* useBazel */, false /* debug */, "./path/to/package", "./otherpath/to/package"); err != nil {
+    if err := gcassert.GCAssert(&buf, "./path/to/package", "./otherpath/to/package"); err != nil {
         // handle non-lint-failure related errors
         panic(err)
     }
@@ -173,6 +173,3 @@ func (f foo) returnA(
     return &a
 }
 ```
-
-## Debugging
-Pass `--debug` to let `gcassert` output build logs and dissasembling logs (when using `bazel`) to files under `/tmp`.
