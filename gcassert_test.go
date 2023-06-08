@@ -14,8 +14,8 @@ import (
 func TestParseDirectives(t *testing.T) {
 	fileSet := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
-			packages.NeedCompiledGoFiles | packages.NeedTypes | packages.NeedTypesInfo,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles |
+			packages.NeedTypes | packages.NeedTypesInfo,
 		Fset: fileSet,
 	}, "./testdata")
 	if err != nil {
@@ -77,7 +77,7 @@ func TestParseDirectives(t *testing.T) {
 
 func TestGCAssert(t *testing.T) {
 	var w strings.Builder
-	err := GCAssert(&w, false /* useBazel */, false /* debug */, "./testdata", "./testdata/otherpkg")
+	err := GCAssert(&w, "./testdata", "./testdata/otherpkg")
 	if err != nil {
 		t.Fatal(err)
 	}
