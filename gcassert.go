@@ -191,7 +191,7 @@ func GCAssert(w io.Writer, paths ...string) error {
 	scanner := bufio.NewScanner(pr)
 	optInfo := regexp.MustCompile(`([\.\/\w]+):(\d+):(\d+): (.*)`)
 	boundsCheck := "Found IsInBounds"
-	sliceBoundsCheck := "Found SliceIsInBounds"
+	sliceBoundsCheck := "Found IsSliceInBounds"
 
 	for scanner.Scan() {
 		line := scanner.Text()

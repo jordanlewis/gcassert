@@ -52,6 +52,7 @@ func TestParseDirectives(t *testing.T) {
 			13: {directives: []assertDirective{bce, inline}},
 			17: {directives: []assertDirective{bce, inline}},
 			19: {directives: []assertDirective{bce, inline}},
+			23: {directives: []assertDirective{bce}},
 		},
 		"testdata/inline.go": {
 			45: {inlinableCallsites: []passInfo{{colNo: 15}}},
@@ -92,6 +93,7 @@ func (f foo) setA(a int) *foo {
 }: f escapes to heap:
 testdata/noescape.go:45:	: a escapes to heap:
 testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
+testdata/bce.go:23:	fmt.Println(ints[1:7]): Found IsSliceInBounds
 testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined
 testdata/bce.go:19:	sum += notInlinable(ints[i]): call was not inlined
 testdata/inline.go:45:	alwaysInlined(3): call was not inlined
