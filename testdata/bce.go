@@ -18,5 +18,8 @@ func aLoop(ints []int) int {
 
 		sum += notInlinable(ints[i]) //gcassert:bce,inline
 	}
+	// N.B. The statement on line 8 yields 'IsInBounds' check since we can't prove the slice has at least 6 elements.
+        // Thus, the statement below yields 'IsSliceInBounds' check since we also can't prove it has at least 7 elements.
+        fmt.Println(ints[1:7]) //gcassert:bce
 	return sum
 }
