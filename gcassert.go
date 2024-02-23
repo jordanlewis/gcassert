@@ -144,8 +144,24 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 // GCAssert searches through the packages at the input path and writes failures
 // to comply with //gcassert directives to the given io.Writer.
 func GCAssert(w io.Writer, paths ...string) error {
+	return GCAssertCwd(w, "", paths...)
+}
+
+// GCAssertCwd performs the same operation as GCAssert, but runs `go build` in
+// the provided working directory `cwd`. If `cwd` is the empty string, then
+/// `go build` will be run in the current working directory.
+func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
+	var err error
+	if cwd == "" {
+		cwd, err = os.Getwd()
+		if err != nil {
+			return err
+		}
+	}
+
 	fileSet := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
+		Dir: cwd,
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedCompiledGoFiles |
 			packages.NeedTypesInfo | packages.NeedTypes,
 		Fset: fileSet,
@@ -160,13 +176,13 @@ func GCAssert(w io.Writer, paths ...string) error {
 
 	args := []string{"build", "-gcflags=-m=2 -d=ssa/check_bce/debug=1"}
 	for i := range paths {
-		args = append(args, "./"+paths[i])
+		if filepath.IsAbs(paths[i]) {
+			args = append(args, paths[i])
+		} else {
+			args = append(args, "./"+paths[i])
+		}
 	}
 	cmd := exec.Command("go", args...)
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
 	cmd.Dir = cwd
 	pr, pw := io.Pipe()
 	// Create a temp file to log all diagnostic output.

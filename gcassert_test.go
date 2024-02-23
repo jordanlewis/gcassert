@@ -77,12 +77,10 @@ func TestParseDirectives(t *testing.T) {
 }
 
 func TestGCAssert(t *testing.T) {
-	var w strings.Builder
-	err := GCAssert(&w, "./testdata", "./testdata/otherpkg")
+	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	expectedOutput := `testdata/noescape.go:21:	foo := foo{a: 1, b: 2}: foo escapes to heap:
 testdata/noescape.go:35:	// This annotation should fail, because f will escape to the heap.
 //
@@ -103,5 +101,52 @@ testdata/inline.go:58:	test(0).neverInlinedMethod(10): call was not inlined
 testdata/inline.go:60:	otherpkg.A{}.NeverInlined(sum): call was not inlined
 testdata/issue5.go:4:	Gen().Layout(): call was not inlined
 `
-	assert.Equal(t, expectedOutput, w.String())
+
+	testCases := []struct{
+		name string
+		pkgs []string
+		cwd string
+		expected string
+	}{
+		{
+			name: "relative",
+			pkgs: []string{
+				"./testdata",
+				"./testdata/otherpkg",
+			},
+			expected: expectedOutput,
+		},
+		{
+			name: "absolute",
+			pkgs: []string{
+				filepath.Join(cwd, "testdata"),
+				filepath.Join(cwd, "testdata/otherpkg"),
+			},
+			expected: expectedOutput,
+		},
+		{
+			name: "relative-cwd",
+			pkgs: []string{
+				".",
+				"./otherpkg",
+			},
+			cwd: filepath.Join(cwd, "testdata"),
+			expected: strings.ReplaceAll(expectedOutput, "testdata/", ""),
+		},
+	}
+	for _, testCase := range testCases {
+		var w strings.Builder
+		t.Run(testCase.name, func(t *testing.T) {
+			var err error
+			if testCase.cwd == "" {
+				err = GCAssert(&w, testCase.pkgs...)
+			} else {
+				err = GCAssertCwd(&w, testCase.cwd, testCase.pkgs...)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			assert.Equal(t, testCase.expected, w.String())
+		})
+	}
 }
