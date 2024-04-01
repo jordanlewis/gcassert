@@ -224,11 +224,10 @@ func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 			}
 			message := matches[4]
 
-			absPath, err := filepath.Abs(path)
-			if err != nil {
-				return err
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(cwd, path)
 			}
-			if lineToDirectives := directiveMap[absPath]; lineToDirectives != nil {
+			if lineToDirectives := directiveMap[path]; lineToDirectives != nil {
 				info := lineToDirectives[lineNo]
 				if len(info.directives) > 0 {
 					if info.passedDirective == nil {

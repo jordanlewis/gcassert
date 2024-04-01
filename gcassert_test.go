@@ -127,11 +127,11 @@ testdata/issue5.go:4:	Gen().Layout(): call was not inlined
 		{
 			name: "relative-cwd",
 			pkgs: []string{
-				".",
-				"./otherpkg",
+				"./testdata",
+				"./testdata/otherpkg",
 			},
-			cwd: filepath.Join(cwd, "testdata"),
-			expected: strings.ReplaceAll(expectedOutput, "testdata/", ""),
+			cwd: cwd,
+			expected: expectedOutput,
 		},
 	}
 	for _, testCase := range testCases {
