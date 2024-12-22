@@ -390,10 +390,11 @@ func (v *inlinedDeclVisitor) Visit(node ast.Node) (w ast.Visitor) {
 			obj = v.p.TypesInfo.Uses[n]
 		case *ast.SelectorExpr:
 			sel := v.p.TypesInfo.Selections[n]
-			if sel == nil {
-				break
+			if sel != nil {
+				obj = sel.Obj()
+			} else {
+				obj = v.p.TypesInfo.Uses[n.Sel]
 			}
-			obj = sel.Obj()
 		}
 		if _, ok := v.mustInlineFuncs[obj]; ok {
 			lineInfo := v.directiveMap[lineNumber]
