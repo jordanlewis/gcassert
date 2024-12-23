@@ -99,13 +99,14 @@ testdata/inline.go:51:	sum += notInlinable(i): call was not inlined
 testdata/inline.go:55:	sum += 1: call was not inlined
 testdata/inline.go:58:	test(0).neverInlinedMethod(10): call was not inlined
 testdata/inline.go:60:	otherpkg.A{}.NeverInlined(sum): call was not inlined
+testdata/inline.go:62:	otherpkg.NeverInlinedFunc(sum): call was not inlined
 testdata/issue5.go:4:	Gen().Layout(): call was not inlined
 `
 
 	testCases := []struct{
-		name string
-		pkgs []string
-		cwd string
+		name     string
+		pkgs     []string
+		cwd      string
 		expected string
 	}{
 		{
@@ -130,7 +131,7 @@ testdata/issue5.go:4:	Gen().Layout(): call was not inlined
 				"./testdata",
 				"./testdata/otherpkg",
 			},
-			cwd: cwd,
+			cwd:      cwd,
 			expected: expectedOutput,
 		},
 	}

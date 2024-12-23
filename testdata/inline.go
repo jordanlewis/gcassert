@@ -58,4 +58,6 @@ func caller() {
 	sum += test(0).neverInlinedMethod(10)
 
 	otherpkg.A{}.NeverInlined(sum)
+
+	otherpkg.NeverInlinedFunc(sum)
 }

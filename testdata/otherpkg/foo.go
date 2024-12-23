@@ -10,3 +10,10 @@ func (a A) NeverInlined(n int) {
 		fmt.Println(i)
 	}
 }
+
+//gcassert:inline
+func NeverInlinedFunc(n int) {
+	for i := 0; i < n; i++ {
+		fmt.Println(i)
+	}
+}
