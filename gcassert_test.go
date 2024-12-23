@@ -1,6 +1,7 @@
 package gcassert
 
 import (
+	"bytes"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -21,15 +22,24 @@ func TestParseDirectives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	absMap, err := parseDirectives(pkgs, fileSet)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
+	var errOut bytes.Buffer
+	absMap, err := parseDirectives(pkgs, fileSet, cwd, &errOut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, `testdata/bad_directive.go:4:	//gcassert:foo
+func badDirective1()	{}: unknown directive "foo"
+testdata/bad_directive.go:8:	badDirective1(): unknown directive "bar"
+testdata/bad_directive.go:12:	//gcassert:inline,afterinline
+func badDirective3() {
+	badDirective2()
+}: unknown directive "afterinline"
+`, errOut.String())
+
 	// Convert the map into relative paths for ease of testing, and remove
 	// the syntax node so we don't have to test that as well.
 	relMap := make(directiveMap, len(absMap))
@@ -46,6 +56,9 @@ func TestParseDirectives(t *testing.T) {
 	}
 
 	expectedMap := directiveMap{
+		"testdata/bad_directive.go": {
+			8: {directives: []assertDirective{bce, inline}},
+		},
 		"testdata/bce.go": {
 			8:  {directives: []assertDirective{bce}},
 			11: {directives: []assertDirective{bce, inline}},
@@ -63,11 +76,11 @@ func TestParseDirectives(t *testing.T) {
 			58: {inlinableCallsites: []passInfo{{colNo: 35}}},
 		},
 		"testdata/noescape.go": {
-			21: {directives: []assertDirective{noescape}},
-			28: {directives: []assertDirective{noescape}},
-			35: {directives: []assertDirective{noescape}},
-			42: {directives: []assertDirective{noescape}},
-			45: {directives: []assertDirective{noescape}},
+			11: {directives: []assertDirective{noescape}},
+			18: {directives: []assertDirective{noescape}},
+			25: {directives: []assertDirective{noescape}},
+			33: {directives: []assertDirective{noescape}},
+			36: {directives: []assertDirective{noescape}},
 		},
 		"testdata/issue5.go": {
 			4: {inlinableCallsites: []passInfo{{colNo: 14}}},
@@ -81,15 +94,22 @@ func TestGCAssert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedOutput := `testdata/noescape.go:21:	foo := foo{a: 1, b: 2}: foo escapes to heap:
-testdata/noescape.go:35:	// This annotation should fail, because f will escape to the heap.
+	expectedOutput := `testdata/bad_directive.go:4:	//gcassert:foo
+func badDirective1()	{}: unknown directive "foo"
+testdata/bad_directive.go:8:	badDirective1(): unknown directive "bar"
+testdata/bad_directive.go:12:	//gcassert:inline,afterinline
+func badDirective3() {
+	badDirective2()
+}: unknown directive "afterinline"
+testdata/noescape.go:11:	foo := foo{a: 1, b: 2}: foo escapes to heap:
+testdata/noescape.go:25:	// This annotation should fail, because f will escape to the heap.
 //
 //gcassert:noescape
 func (f foo) setA(a int) *foo {
 	f.a = a
 	return &f
 }: f escapes to heap:
-testdata/noescape.go:45:	: a escapes to heap:
+testdata/noescape.go:36:	: a escapes to heap:
 testdata/bce.go:8:	fmt.Println(ints[5]): Found IsInBounds
 testdata/bce.go:23:	fmt.Println(ints[1:7]): Found IsSliceInBounds
 testdata/bce.go:17:	sum += notInlinable(ints[i]): call was not inlined

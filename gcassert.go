@@ -38,7 +38,7 @@ func stringToDirective(s string) (assertDirective, error) {
 	case "noescape":
 		return noescape, nil
 	}
-	return noDirective, errors.New(fmt.Sprintf("no such directive %s", s))
+	return noDirective, errors.New(fmt.Sprintf("unknown directive %q", s))
 }
 
 // passInfo contains info on a passed directive for directives that have
@@ -76,35 +76,40 @@ type assertVisitor struct {
 	// some kind that were marked with //gcassert:inline by the user.
 	mustInlineFuncs map[types.Object]struct{}
 	fileSet         *token.FileSet
+	cwd             string
 
 	p *packages.Package
+
+	errOutput io.Writer
 }
 
 func newAssertVisitor(
 	commentMap ast.CommentMap,
 	fileSet *token.FileSet,
+	cwd string,
 	p *packages.Package,
 	mustInlineFuncs map[types.Object]struct{},
+	errOutput io.Writer,
 ) assertVisitor {
 	return assertVisitor{
 		commentMap:      commentMap,
 		fileSet:         fileSet,
+		cwd:             cwd,
 		directiveMap:    make(map[int]lineInfo),
 		mustInlineFuncs: mustInlineFuncs,
 		p:               p,
+		errOutput:       errOutput,
 	}
 }
 
-func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
+func (v *assertVisitor) Visit(node ast.Node) ast.Visitor {
 	if node == nil {
-		return w
+		return nil
 	}
-	pos := node.Pos()
-	lineNumber := v.fileSet.Position(pos).Line
+	pos := v.fileSet.Position(node.Pos())
 
 	m := v.commentMap[node]
 	for _, g := range m {
-	COMMENT_LIST:
 		for _, c := range g.List {
 			matches := gcAssertRegex.FindStringSubmatch(c.Text)
 			if len(matches) == 0 {
@@ -114,28 +119,29 @@ func (v assertVisitor) Visit(node ast.Node) (w ast.Visitor) {
 			// gcassert directive(s).
 			directiveStrings := strings.Split(matches[1], ",")
 
-			lineInfo := v.directiveMap[lineNumber]
+			lineInfo := v.directiveMap[pos.Line]
 			lineInfo.n = node
 			for _, s := range directiveStrings {
 				directive, err := stringToDirective(s)
 				if err != nil {
+					printAssertionFailure(v.cwd, v.fileSet, node, v.errOutput, err.Error())
 					continue
 				}
 				if directive == inline {
 					switch n := node.(type) {
 					case *ast.FuncDecl:
 						// Add the Object that this FuncDecl's ident is connected
-						// to to our map of must-inline functions.
+						// to our map of must-inline functions.
 						obj := v.p.TypesInfo.Defs[n.Name]
 						if obj != nil {
 							v.mustInlineFuncs[obj] = struct{}{}
 						}
-						continue COMMENT_LIST
+						continue
 					}
 				}
 				lineInfo.directives = append(lineInfo.directives, directive)
+				v.directiveMap[pos.Line] = lineInfo
 			}
-			v.directiveMap[lineNumber] = lineInfo
 		}
 	}
 	return v
@@ -149,7 +155,7 @@ func GCAssert(w io.Writer, paths ...string) error {
 
 // GCAssertCwd performs the same operation as GCAssert, but runs `go build` in
 // the provided working directory `cwd`. If `cwd` is the empty string, then
-/// `go build` will be run in the current working directory.
+// `go build` will be run in the current working directory.
 func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 	var err error
 	if cwd == "" {
@@ -166,7 +172,7 @@ func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 			packages.NeedTypesInfo | packages.NeedTypes,
 		Fset: fileSet,
 	}, paths...)
-	directiveMap, err := parseDirectives(pkgs, fileSet)
+	directiveMap, err := parseDirectives(pkgs, fileSet, cwd, w)
 	if err != nil {
 		return err
 	}
@@ -244,9 +250,7 @@ func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 							// Print out the user's code lineNo that failed the assertion,
 							// the assertion itself, and the compiler output that
 							// proved that the assertion failed.
-							if err := printAssertionFailure(cwd, fileSet, info, w, message); err != nil {
-								return err
-							}
+							printAssertionFailure(cwd, fileSet, info.n, w, message)
 						}
 					case inline:
 						if strings.HasPrefix(message, "inlining call to") {
@@ -254,9 +258,7 @@ func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 						}
 					case noescape:
 						if strings.HasSuffix(message, "escapes to heap:") {
-							if err := printAssertionFailure(cwd, fileSet, info, w, message); err != nil {
-								return err
-							}
+							printAssertionFailure(cwd, fileSet, info.n, w, message)
 						}
 					}
 				}
@@ -291,10 +293,7 @@ func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 				// each inlining directive, check if there was matching compiler
 				// output and fail if not.
 				if !d.passed {
-					if err := printAssertionFailure(
-						cwd, fileSet, info, w, "call was not inlined"); err != nil {
-						return err
-					}
+					printAssertionFailure(cwd, fileSet, info.n, w, "call was not inlined")
 				}
 			}
 			for i, d := range info.directives {
@@ -302,10 +301,7 @@ func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 					continue
 				}
 				if !info.passedDirective[i] {
-					if err := printAssertionFailure(
-						cwd, fileSet, info, w, "call was not inlined"); err != nil {
-						return err
-					}
+					printAssertionFailure(cwd, fileSet, info.n, w, "call was not inlined")
 				}
 			}
 		}
@@ -317,31 +313,30 @@ func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 	return nil
 }
 
-func printAssertionFailure(cwd string, fileSet *token.FileSet, info lineInfo, w io.Writer, message string) error {
+func printAssertionFailure(cwd string, fileSet *token.FileSet, n ast.Node, w io.Writer, message string) {
 	var buf strings.Builder
-	_ = printer.Fprint(&buf, fileSet, info.n)
-	pos := fileSet.Position(info.n.Pos())
+	_ = printer.Fprint(&buf, fileSet, n)
+	pos := fileSet.Position(n.Pos())
 	relPath, err := filepath.Rel(cwd, pos.Filename)
 	if err != nil {
-		return err
+		relPath = pos.Filename
 	}
 	fmt.Fprintf(w, "%s:%d:\t%s: %s\n", relPath, pos.Line, buf.String(), message)
-	return nil
 }
 
 // directiveMap maps filepath to line number to lineInfo
 type directiveMap map[string]map[int]lineInfo
 
-func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiveMap, error) {
+func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet, cwd string, errOutput io.Writer) (directiveMap, error) {
 	fileDirectiveMap := make(directiveMap)
 	mustInlineFuncs := make(map[types.Object]struct{})
 	for _, pkg := range pkgs {
 		for i, file := range pkg.Syntax {
 			commentMap := ast.NewCommentMap(fileSet, file, file.Comments)
 
-			v := newAssertVisitor(commentMap, fileSet, pkg, mustInlineFuncs)
+			v := newAssertVisitor(commentMap, fileSet, cwd, pkg, mustInlineFuncs, errOutput)
 			// First: find all lines of code annotated with our gcassert directives.
-			ast.Walk(v, file)
+			ast.Walk(&v, file)
 
 			file := pkg.CompiledGoFiles[i]
 			if len(v.directiveMap) > 0 {
@@ -353,7 +348,7 @@ func parseDirectives(pkgs []*packages.Package, fileSet *token.FileSet) (directiv
 	// Do another pass to find all callsites of funcs marked with inline.
 	for _, pkg := range pkgs {
 		for i, file := range pkg.Syntax {
-			v := &inlinedDeclVisitor{assertVisitor: newAssertVisitor(nil, fileSet, pkg, mustInlineFuncs)}
+			v := &inlinedDeclVisitor{assertVisitor: newAssertVisitor(nil, fileSet, cwd, pkg, mustInlineFuncs, errOutput)}
 			filePath := pkg.CompiledGoFiles[i]
 			v.directiveMap = fileDirectiveMap[filePath]
 			if v.directiveMap == nil {
@@ -372,9 +367,9 @@ type inlinedDeclVisitor struct {
 	assertVisitor
 }
 
-func (v *inlinedDeclVisitor) Visit(node ast.Node) (w ast.Visitor) {
+func (v *inlinedDeclVisitor) Visit(node ast.Node) ast.Visitor {
 	if node == nil {
-		return w
+		return nil
 	}
 	pos := node.Pos()
 	lineNumber := v.fileSet.Position(pos).Line
