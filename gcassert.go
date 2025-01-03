@@ -128,14 +128,25 @@ func (v *assertVisitor) Visit(node ast.Node) ast.Visitor {
 					continue
 				}
 				if directive == inline {
+					// If the node is a FuncDecl or an assignment of an
+					// anonymous function, add the ident's Object to our map of
+					// must-inline functions.
+					var obj types.Object
 					switch n := node.(type) {
 					case *ast.FuncDecl:
-						// Add the Object that this FuncDecl's ident is connected
-						// to our map of must-inline functions.
-						obj := v.p.TypesInfo.Defs[n.Name]
-						if obj != nil {
-							v.mustInlineFuncs[obj] = struct{}{}
+						obj = v.p.TypesInfo.Defs[n.Name]
+					case *ast.AssignStmt:
+						if _, ok := n.Rhs[0].(*ast.FuncLit); !ok {
+							break
 						}
+						id, ok := n.Lhs[0].(*ast.Ident)
+						if !ok {
+							break
+						}
+						obj = v.p.TypesInfo.Defs[id]
+					}
+					if obj != nil {
+						v.mustInlineFuncs[obj] = struct{}{}
 						continue
 					}
 				}
