@@ -74,6 +74,8 @@ func badDirective3() {
 			55: {directives: []assertDirective{inline}},
 			57: {inlinableCallsites: []passInfo{{colNo: 36}}},
 			58: {inlinableCallsites: []passInfo{{colNo: 35}}},
+			75: {directives: []assertDirective{inline}},
+			77: {directives: []assertDirective{inline}},
 		},
 		"testdata/noescape.go": {
 			11: {directives: []assertDirective{noescape}},
@@ -120,10 +122,11 @@ testdata/inline.go:55:	sum += 1: call was not inlined
 testdata/inline.go:58:	test(0).neverInlinedMethod(10): call was not inlined
 testdata/inline.go:60:	otherpkg.A{}.NeverInlined(sum): call was not inlined
 testdata/inline.go:62:	otherpkg.NeverInlinedFunc(sum): call was not inlined
+testdata/inline.go:77:	sum += anonNeverInlinedNoAssert(i): call was not inlined
 testdata/issue5.go:4:	Gen().Layout(): call was not inlined
 `
 
-	testCases := []struct{
+	testCases := []struct {
 		name     string
 		pkgs     []string
 		cwd      string

@@ -60,4 +60,20 @@ func caller() {
 	otherpkg.A{}.NeverInlined(sum)
 
 	otherpkg.NeverInlinedFunc(sum)
+
+	anonInlinedNoAssert := func(a int) int {
+		return a + 10
+	}
+
+	anonNeverInlinedNoAssert := func(a int) int {
+		fmt.Println(a)
+		return a + 10
+	}
+
+	for i := 0; i < 10; i++ {
+		//gcassert:inline
+		sum += anonInlinedNoAssert(i)
+		//gcassert:inline
+		sum += anonNeverInlinedNoAssert(i)
+	}
 }
