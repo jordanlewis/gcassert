@@ -260,6 +260,9 @@ func GCAssertCwd(w io.Writer, cwd string, paths ...string) error {
 						if strings.HasSuffix(message, "escapes to heap:") {
 							printAssertionFailure(cwd, fileSet, info.n, w, message)
 						}
+						if strings.Contains(message, "leaking param:") {
+							printAssertionFailure(cwd, fileSet, info.n, w, message)
+						}
 					}
 				}
 				for i := range info.inlinableCallsites {
