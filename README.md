@@ -54,7 +54,7 @@ inline comment.
 To get the gcassert binary:
 
 ```bash
-go get github.com/jordanlewis/gcassert/cmd/gcassert
+go install github.com/jordanlewis/gcassert/cmd/gcassert@latest
 ```
 
 To get the gcassert library:
