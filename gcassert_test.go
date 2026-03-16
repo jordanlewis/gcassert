@@ -68,12 +68,17 @@ func badDirective3() {
 			23: {directives: []assertDirective{bce}},
 		},
 		"testdata/inline.go": {
-			45: {inlinableCallsites: []passInfo{{colNo: 15}}},
-			49: {directives: []assertDirective{inline}},
-			51: {directives: []assertDirective{inline}},
-			55: {directives: []assertDirective{inline}},
-			57: {inlinableCallsites: []passInfo{{colNo: 36}}},
-			58: {inlinableCallsites: []passInfo{{colNo: 35}}},
+			45:  {inlinableCallsites: []passInfo{{colNo: 15}}},
+			49:  {directives: []assertDirective{inline}},
+			51:  {directives: []assertDirective{inline}},
+			55:  {directives: []assertDirective{inline}},
+			57:  {inlinableCallsites: []passInfo{{colNo: 36}}},
+			58:  {inlinableCallsites: []passInfo{{colNo: 35}}},
+			85:  {inlinableCallsites: []passInfo{{colNo: 21}}},
+			86:  {inlinableCallsites: []passInfo{{colNo: 26}}},
+			88:  {directives: []assertDirective{inline}},
+			90:  {directives: []assertDirective{inline}},
+			102: {inlinableCallsites: []passInfo{{colNo: 12}}},
 		},
 		"testdata/noescape.go": {
 			11: {directives: []assertDirective{noescape}},
@@ -120,10 +125,12 @@ testdata/inline.go:55:	sum += 1: call was not inlined
 testdata/inline.go:58:	test(0).neverInlinedMethod(10): call was not inlined
 testdata/inline.go:60:	otherpkg.A{}.NeverInlined(sum): call was not inlined
 testdata/inline.go:62:	otherpkg.NeverInlinedFunc(sum): call was not inlined
+testdata/inline.go:86:	anonNeverInlined(i): call was not inlined
+testdata/inline.go:90:	sum += anonNeverInlinedNoAssert(i): call was not inlined
 testdata/issue5.go:4:	Gen().Layout(): call was not inlined
 `
 
-	testCases := []struct{
+	testCases := []struct {
 		name     string
 		pkgs     []string
 		cwd      string

@@ -60,4 +60,59 @@ func caller() {
 	otherpkg.A{}.NeverInlined(sum)
 
 	otherpkg.NeverInlinedFunc(sum)
+
+	//gcassert:inline
+	anonInlined := func(a int) int {
+		return a + 10
+	}
+
+	anonInlinedNoAssert := func(a int) int {
+		return a + 10
+	}
+
+	//gcassert:inline
+	anonNeverInlined := func(a int) int {
+		fmt.Println(a)
+		return a + 10
+	}
+
+	anonNeverInlinedNoAssert := func(a int) int {
+		fmt.Println(a)
+		return a + 10
+	}
+
+	for i := 0; i < 10; i++ {
+		sum += anonInlined(i)
+		sum += anonNeverInlined(i)
+		//gcassert:inline
+		sum += anonInlinedNoAssert(i)
+		//gcassert:inline
+		sum += anonNeverInlinedNoAssert(i)
+	}
+
+	// The assertion for the anonymous function assigned to baz below does not
+	// apply to this call of the named function baz, which cannot be inlined and
+	// has no inline assertion.
+	sum += baz(1)
+
+	//gcassert:inline
+	baz := func(a int) int {
+		return a + 10
+	}
+	sum += baz(1)
+
+	{
+		// The assertion for the baz in the parent scope does not apply to this
+		// baz, which cannot be inlined and has no assertion.
+		baz := func(a int) int {
+			fmt.Println(a)
+			return a + 10
+		}
+		sum += baz(1)
+	}
+}
+
+//go:noinline
+func baz(a int) int {
+	return a + 10
 }
